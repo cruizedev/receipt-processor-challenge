@@ -30,7 +30,13 @@ func (suite *ReceiptSuite) SetupSuite() {
 func (suite *ReceiptSuite) TestCount() {
 	require := suite.Require()
 
-	b := []byte(`
+	cases := []struct {
+		request string
+		score   int
+	}{
+		{
+			score: 28,
+			request: `
 {
   "retailer": "Target",
   "purchaseDate": "2022-01-01",
@@ -59,35 +65,77 @@ func (suite *ReceiptSuite) TestCount() {
   ],
   "total": "35.35"
 }
-	`)
+	`,
+		},
+		{
+			score: 109,
+			request: `
+{
+  "retailer": "M&M Corner Market",
+  "purchaseDate": "2022-03-20",
+  "purchaseTime": "14:33",
+  "items": [
+    {
+      "shortDescription": "Gatorade",
+      "price": "2.25"
+    },
+    {
+      "shortDescription": "Gatorade",
+      "price": "2.25"
+    },
+    {
+      "shortDescription": "Gatorade",
+      "price": "2.25"
+    },
+    {
+      "shortDescription": "Gatorade",
+      "price": "2.25"
+    }
+  ],
+  "total": "9.00"
+}
+`,
+		},
+	}
 
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/process", bytes.NewReader(b))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	for i, c := range cases {
+		suite.Run(fmt.Sprintf("case %d", i), func() {
+			b := []byte(c.request)
 
-	suite.engine.ServeHTTP(w, req)
-	require.Equal(http.StatusOK, w.Code)
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/process", bytes.NewReader(b))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 
-	var id response.ID
-	require.NoError(json.NewDecoder(w.Body).Decode(&id))
-
-	// figure out the status of receipt by calling points endpoint.
-	{
-		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/%s/points", id.ID), nil)
-		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-
-		suite.engine.ServeHTTP(w, req)
-		for w.Code == http.StatusAccepted {
 			suite.engine.ServeHTTP(w, req)
-		}
+			require.Equal(http.StatusOK, w.Code)
 
-		require.Equal(http.StatusOK, w.Code)
+			var id response.ID
+			require.NoError(json.NewDecoder(w.Body).Decode(&id))
 
-		var score response.Points
-		require.NoError(json.NewDecoder(w.Body).Decode(&score))
+			suite.T().Logf("sending a process request and having %s", id)
 
-		require.Equal(28, score.Points)
+			// figure out the status of receipt by calling points endpoint.
+			{
+				w := httptest.NewRecorder()
+				req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/%s/points", id.ID), nil)
+				req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+
+				suite.engine.ServeHTTP(w, req)
+				for w.Code == http.StatusAccepted {
+					w = httptest.NewRecorder()
+					suite.engine.ServeHTTP(w, req)
+
+					suite.T().Logf("watiing for status to change %d", w.Code)
+				}
+
+				require.Equal(http.StatusOK, w.Code)
+
+				var score response.Points
+				require.NoError(json.NewDecoder(w.Body).Decode(&score))
+
+				require.Equal(c.score, score.Points)
+			}
+		})
 	}
 }
 

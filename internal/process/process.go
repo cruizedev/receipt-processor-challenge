@@ -56,7 +56,7 @@ func (p *Processor) process(r model.Receipt, id string) {
 	}
 	log.Printf("total is integer score %d", score)
 
-	if math.Round(r.Total*4) == r.Total {
+	if math.Round(r.Total*4) == r.Total*4 {
 		score += 25
 	}
 	log.Printf("total is dividable by 0.25 score %d", score)
@@ -69,7 +69,7 @@ func (p *Processor) process(r model.Receipt, id string) {
 	}
 	log.Printf("day is odd score %d", score)
 
-	if r.PurchaseTime.Hour() > 14 && r.PurchaseTime.Hour() < 16 {
+	if r.PurchaseTime.Hour() >= 14 && r.PurchaseTime.Hour() < 16 {
 		score += 10
 	}
 	log.Printf("hour is in 14 - 16 score %d", score)
@@ -85,6 +85,8 @@ func (p *Processor) process(r model.Receipt, id string) {
 	defer p.lock.Unlock()
 
 	p.receipts[id] = score
+
+	log.Printf("processing of %s finished", id)
 }
 
 func (p *Processor) Get(id string) (int, error) {
@@ -95,6 +97,8 @@ func (p *Processor) Get(id string) (int, error) {
 	if !ok {
 		return 0, ErrItemNotFound
 	}
+
+	log.Printf("read %d for %s", score, id)
 
 	if score == -1 {
 		return 0, ErrItemStillInProgress
